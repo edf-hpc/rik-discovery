@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+. /usr/share/initramfs-tools/hook-functions
+
+# Program: ipmitool
+if [ -x /usr/bin/ipmitool ]
+then
+	echo "discovery: ipmitool"
+	copy_exec /usr/bin/ipmitool /bin
+fi
+
+# Modules used by /scripts/discovery  
+MODULES='ipmi_devintf ipmi_si ipmi_msghandler af_packet i8042 atkbd ehci-pci ehci-hcd uhci-hcd ohci-hcd usbhid'
+for mod in ${MODULES}
+do
+  manual_add_modules $mod
+done

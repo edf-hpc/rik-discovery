@@ -1,0 +1,10 @@
+#!/usr/bin/make -f
+%:
+	dh ${@} --parallel
+
+override_dh_fixperms:
+	dh_fixperms 
+
+	# Fix permissions
+	chmod 755 debian/rik-discovery-initramfs-tools/usr/share/initramfs-tools/hooks/discovery
+	chmod 755 debian/rik-discovery-initramfs-tools/usr/share/initramfs-tools/scripts/discovery

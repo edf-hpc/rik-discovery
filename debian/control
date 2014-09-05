@@ -1,0 +1,20 @@
+Source: rik-discovery
+Section: misc
+Priority: optional
+Maintainer: Antonio J. Russo <antonio-externe.russo@edf.fr>
+Uploaders: Antonio J. Russo <antonio-externe.russo@edf.fr>
+Build-Depends: debhelper (>= 9)
+Standards-Version: 3.9.4
+Homepage: https://github.com/edf-hpc/rik-discovery
+Vcs-Git: git://github.com/edf-hpc/rik-discovery.git
+
+Package: rik-discovery-initramfs-tools
+Architecture: all
+Depends:
+ ${misc:Depends}, ipmitool, initramfs-tools 
+Description: Discovery System Boot Scripts (initramfs-tools backend)
+ rik-discovery contains the components to send systems hardware information
+ during the boot process.
+ Information is sent accros tne network using the busybox applet tftp.
+ .
+ This package contains the initramfs-tools backend.

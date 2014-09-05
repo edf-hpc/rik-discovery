@@ -1,0 +1,2 @@
+scripts/discovery usr/share/initramfs-tools/scripts  
+hooks/discovery usr/share/initramfs-tools/hooks  

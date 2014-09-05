@@ -1,0 +1,128 @@
+#!/bin/sh 
+# Copyright (C) 2014 EDF SA
+# Contact:
+#       CCN - HPC <dsp-cspit-ccn-hpc@edf.fr>
+#       1, Avenue du General de Gaulle
+#       92140 Clamart
+#
+#
+#Authors: Antonio J. Russo <antonio-externe.russo@edf.fr>
+#This program is free software; you can redistribute in and/or
+#modify it under the terms of the GNU General Public License,
+#version 2, as published by the Free Software Foundation.
+#This program is distributed in the hope that it will be useful,
+#but WITHOUT ANY WARRANTY; without even the implied warranty of
+#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#GNU General Public License for more details.
+#On Calibre systems, the complete text of the GNU General
+#Public License can be found in `/usr/share/common-licenses/GPL'.
+
+###############################################################
+
+Readcmdline ()
+{
+  for _PARAMETER in `cat /proc/cmdline` 
+  do
+    case "${_PARAMETER}" in
+      tftpserver=*)
+        TFTPSERVER="${_PARAMETER#tftpserver=}"
+        export TFTPSERVER
+      ;;
+      interface=*)
+        IFACE="${_PARAMETER#interface=}" 
+        export IFACE
+      ;;
+    esac
+  done
+}
+
+
+Loadmodules ()
+{
+  # Load kernel modules #
+  MODULES='ipmi_devintf ipmi_si ipmi_msghandler af_packet'
+  for mod in ${MODULES}
+  do
+    modprobe $mod || true
+  done
+}
+
+Configiface ()
+{
+  udevadm trigger
+  udevadm settle
+  LOGGER='/netboot.config'
+  ipconfig -t "15" $IFACE | tee -a $LOGGER
+  if [ -z "$TFTPSERVER" ]
+  then
+    TFTPSERVER=`grep 'rootserver' $LOGGER | awk '{print $2}'`
+    export TFTPSERVER
+  fi 
+}
+
+Startconsole () 
+{
+  MODULES='i8042 atkbd ehci-pci ehci-hcd uhci-hcd ohci-hcd usbhid'
+  for mod in ${MODULES}
+  do
+    modprobe $mod || true
+  done
+  mkdir /var/log
+  syslogd -O /var/log/syslog
+  REASON="$@" PS1='(discovery) ' /bin/sh -i </dev/console >/dev/console 2>&1
+
+}
+
+
+Getifconf () 
+{
+  # Get interfaces configuration # 
+  MACETH0=`ifconfig eth0 2> /dev/null | grep HWaddr |  awk '{print toupper($NF)}'`
+  MACIPMI=`ipmitool lan print 1 2> /dev/null | grep 'MAC Address' |  awk '{print toupper($NF)}'` 
+  ADDIPMI=`ipmitool lan print 1 2> /dev/null | grep 'IP Address' | grep '[[:digit:]]' |  awk '{print toupper($NF)}'`
+  TMPDIR='/temp'
+  TARGET=`ipmitool fru print 0 |grep 'Product Serial' | awk '{print $NF}'`                                    
+
+  # Print file #
+  if [ -n $TARGET ]                                          
+  then                                                       
+    mkdir -p $TMPDIR                                     
+    export TMPDIR                                                
+    export TARGET                                                
+    echo "$ADDIPMI;$MACIPMI,$MACETH0" > "$TMPDIR/$TARGET"                       
+  fi                       
+}
+
+ControlConsole () 
+{
+  CONTROL=`stat -c "%Y" /dev/console`
+  COUNTER=0
+
+  while [ $COUNTER -lt 60 ]
+  do
+    NOW=`stat -c "%Y" /dev/console`
+    if [ $CONTROL -eq $NOW ]
+    then
+      sleep 1
+      COUNTER=$((COUNTER+=1))
+    else
+      CONTROL=$NOW
+      COUNTER=0 
+    fi
+  done
+  ipmitool chassis power off  
+}
+
+Uploadconf ()
+{
+  # Upload file #
+  tftp -p -l "$TMPDIR/$TARGET" -r "discovery/$TARGET" $TFTPSERVER  
+}
+
+Readcmdline
+Loadmodules
+Configiface
+Getifconf
+Uploadconf
+ControlConsole &
+Startconsole
