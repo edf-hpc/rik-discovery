@@ -1,0 +1,298 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+##############################################################################
+#  Copyright (C) 2014 EDF SA                                                 #
+#                                                                            #
+#  Author: Rémi Palancher <remi-externe.palancher@edf.fr>                    #
+#                                                                            #
+#  This file is part of rik-discovery.                                       #
+#                                                                            #
+#  This software is governed by the CeCILL-C license under French law and    #
+#  abiding by the rules of distribution of free software. You can use,       #
+#  modify and/ or redistribute the software under the terms of the CeCILL-C  #
+#  license as circulated by CEA, CNRS and INRIA at the following URL         #
+#  "http://www.cecill.info".                                                 #
+#                                                                            #
+#  As a counterpart to the access to the source code and rights to copy,     #
+#  modify and redistribute granted by the license, users are provided only   #
+#  with a limited warranty and the software's author, the holder of the      #
+#  economic rights, and the successive licensors have only limited           #
+#  liability.                                                                #
+#                                                                            #
+#  In this respect, the user's attention is drawn to the risks associated    #
+#  with loading, using, modifying and/or developing or reproducing the       #
+#  software by the user in light of its specific status of free software,    #
+#  that may mean that it is complicated to manipulate, and that also         #
+#  therefore means that it is reserved for developers and experienced        #
+#  professionals having in-depth computer knowledge. Users are therefore     #
+#  encouraged to load and test the software's suitability as regards their   #
+#  requirements in conditions enabling the security of their systems and/or  #
+#  data to be ensured and, more generally, to use and operate it in the      #
+#  same conditions as regards security.                                      #
+#                                                                            #
+#  The fact that you are presently reading this means that you have had      #
+#  knowledge of the CeCILL-C license and that you accept its terms.          #
+#                                                                            #
+##############################################################################
+
+""" This Python script updates master_network.csv file based on discovery data
+    and configuration file which contains the list of nodes and IP ranges.
+
+    Example of configuration file rik.conf:
+
+        [cluster]
+        nodes=cn[001-128]
+        imm=10.10.1.1-10.10.1.128
+        eth=10.10.2.1-10.10.2.128
+        ib=10.10.3.1-10.10.3.128    
+"""
+
+import csv
+import glob
+import os
+import sys
+from sets import Set
+import argparse
+import ConfigParser
+from netaddr import IPRange
+from ClusterShell.NodeSet import NodeSet
+
+DISCOVERY_DIR="/admin/public/tftp/discovery"
+CONF_FILE="/admin/restricted/discovery/rik.conf"
+MN_FILE="/admin/restricted/puppet-config/modules/prerequisites/lib/puppet/external/cluster_data/master_network.csv"
+
+def debug(msg):
+    """Print debug message if debug mode is enable."""
+    if conf.debug:
+        print("D: %s" % (msg))
+
+def die(msg):
+    """Print error message and exit script with return code 1."""
+    print("E: %s" % (msg))
+    sys.exit(1)
+
+class Conf(object):
+    """Runtime configuration"""
+    def __init__(self):
+        self.write = False
+        self.debug = False
+        self.conf_file = CONF_FILE
+        self.discovery_dir = DISCOVERY_DIR
+        self.master_network = MN_FILE
+        self.hosts = {}
+
+    def dump(self):
+        """Print runtime configuration if debug is enable"""
+        debug("runtime configuration")
+        debug("  write: %s" % (self.write))
+        debug("  conf_file: %s" % (self.conf_file))
+        debug("  discovery_dir: %s" % (self.discovery_dir))
+        debug("  master_network: %s" % (self.master_network))
+
+    def parse(self):
+        """Parse the configuration file"""
+        if not os.path.isfile(self.conf_file):
+            die("failed to parse config file {filename}" \
+                    .format(filename=self.conf_file))
+        parser = ConfigParser.ConfigParser()
+        parser.read(self.conf_file)
+
+        # nodes
+        nodeset_s = parser.get('cluster', 'nodes')
+        nodeset = NodeSet(nodeset_s)
+
+        # ip ranges
+        ip_range_imm_a = parser.get('cluster', 'imm').split('-')
+        ip_range_eth_a = parser.get('cluster', 'eth').split('-')
+        ip_range_ib_a = parser.get('cluster', 'ib').split('-')
+        ip_range_imm = [ str(ip) for ip in IPRange(ip_range_imm_a[0],
+                                                   ip_range_imm_a[1]) \
+                                 if is_host_ip(ip) ]
+        ip_range_eth = [ str(ip) for ip in IPRange(ip_range_eth_a[0],
+                                                   ip_range_eth_a[1]) \
+                                 if is_host_ip(ip) ]
+        ip_range_ib  = [ str(ip) for ip in IPRange(ip_range_ib_a[0],
+                                                   ip_range_ib_a[1]) \
+                                 if is_host_ip(ip) ]
+
+        # check size of nodeset and ranges
+        if len(nodeset) != len(ip_range_eth):
+            die("%d ip in eth range for %s hosts" \
+                    % (len(ip_range_eth), len(nodeset)))
+        if len(nodeset) != len(ip_range_imm):
+            die("%d ip in imm range for %s hosts" \
+                    % (len(ip_range_imm), len(nodeset)))
+        if len(nodeset) != len(ip_range_ib):
+            die("%d ip in ib range for %s hosts" \
+                    % (len(ip_range_ib), len(nodeset)))
+
+        for host_id in range(0, len(nodeset)):
+            ip_imm = ip_range_imm[host_id]
+            self.hosts[ip_imm] = {}
+            self.hosts[ip_imm]['hostname'] = nodeset[host_id]
+            self.hosts[ip_imm]['ip_eth'] = ip_range_eth[host_id]
+            self.hosts[ip_imm]['ip_ib'] = ip_range_ib[host_id]
+
+conf = Conf()
+
+def is_host_ip(ip):
+    """Check if IPAddress in parameter is a host ip (ie. not ending
+       with .0 and .255).
+    """
+    return not str(ip).endswith('.0') and not str(ip).endswith('.255')
+
+def parse_args():
+    """Parses cmd line arguments and set conf accordingly."""
+    global conf
+    parser = argparse.ArgumentParser(
+                 description='Add missing nodes in master_network.csv')
+
+    parser.add_argument(
+        '-d', '--debug',
+        help='enable debug mode',
+        action='store_true')
+    parser.add_argument(
+        '--write',
+        help='write to master_network.csv file (USE WITH CAUTION!)',
+        action='store_true')
+    parser.add_argument(
+        '--conf',
+        help="configuration file (default: %s)" % (CONF_FILE))
+    parser.add_argument(
+        '--discovery-dir',
+        help="directory containing discovery data (default: %s)" \
+            % (DISCOVERY_DIR))
+    parser.add_argument(
+        '--master-network',
+        help="master network file (default: %s)" % (MN_FILE))
+
+    args = parser.parse_args()
+
+    # set runtime conf accordingly
+    if args.debug:
+        conf.debug = True
+    if args.write:
+        conf.write = True
+    if args.conf:
+        conf.conf_file = args.conf
+    if args.discovery_dir:
+        conf.discovery_dir = args.discovery_dir
+    if args.master_network:
+        conf.master_network = args.master_network
+
+def parse_discovery_files():
+    """Parses discovery files in discovery dir and fill the dict.
+       Discovery dir content:
+           cat /admin/public/tftp/discovery/<SN>
+           <IP IMM>;<MAC IMM>,<MAC ETH>
+    """
+
+    discovered_nodes = {}
+
+    search_path = os.path.join(conf.discovery_dir,'*')
+
+    for discovery_filename in glob.glob(search_path):
+
+        with(open(discovery_filename,'r')) as discovery_file:
+            (ip_imm,macs) = discovery_file.readline().split(';')
+            (mac_imm, mac_eth) = macs.split(',')
+            mac_eth = mac_eth.rstrip() # remove \n at EOL
+            if discovered_nodes.has_key(ip_imm):
+                raise KeyError("IMM MAC %s already present in dict " \
+                               "discovered_nodes" % (ip_imm)) 
+            discovered_nodes[ip_imm] = {}
+            discovered_nodes[ip_imm]['node_sn'] = \
+                os.path.basename(discovery_filename)
+            discovered_nodes[ip_imm]['mac_imm'] = mac_imm
+            discovered_nodes[ip_imm]['mac_eth'] = mac_eth
+            debug("new discovered node: %s -> %s" \
+                  % (ip_imm, str(discovered_nodes[ip_imm])))
+
+    return discovered_nodes
+
+def build_mn_lines(discovered_nodes, hosts_ip):
+    """Build all master_network lines base on content of discovered_nodes
+       completed with information from hosts_ip.
+    """
+    mn_lines = {}
+
+    for ip_imm, host_infos in hosts_ip.iteritems():
+        if discovered_nodes.has_key(ip_imm):
+            hostname = host_infos['hostname']
+            mac_imm = discovered_nodes[ip_imm]['mac_imm']
+            mac_eth = discovered_nodes[ip_imm]['mac_eth']
+            mn_lines[hostname] = \
+                   "%s,%s;eth0,ib0;imm%s,%s,ib%s;%s,%s,%s;255.255.248.0;" \
+                   "0@0@0,1@1@1;0@1@0,1@2@0;0@0,1@1,2@2\n" \
+                   % (mac_imm, mac_eth,
+                      hostname, hostname, hostname,
+                      ip_imm, host_infos['ip_eth'], host_infos['ip_ib'])
+            debug("new node info: %s" % (hostname))
+        else:
+            debug("skipping ip_imm %s in ip_file since not discovered" \
+                  % (ip_imm))
+    return mn_lines
+
+def parse_current_mn_hosts():
+    """Parses current master network.
+       # <MAC1>,<MAC2>;eth0,ib0;imm<HOSTNAME>,<HOSTNAME>,ib<HOSTNAME>;\
+         <IP1>,<IP2>,<IP2>;<NETMASK>;<TRIPLETS>
+    """
+    mn_hosts = Set()
+
+    with(open(conf.master_network,'r')) as mn_file:
+        mn_reader = csv.reader(mn_file, delimiter=';')
+        mn_reader.next() # skip header
+        for mn_line in mn_reader:
+           hostnames = mn_line[2].split(',')
+           if len(hostnames) == 3:
+               hostname = hostnames[1]
+               mn_hosts.add(hostname)
+
+    return mn_hosts
+
+def compute_mn_new_lines(mn_hosts, mn_lines):
+    """Computes missing master_network lines based on current mn_hosts and
+       mn_lines.
+    """
+    mn_new_lines = []
+
+    for hostname, mn_line in mn_lines.iteritems():
+        if hostname not in mn_hosts:
+            mn_new_lines.append(mn_line)
+            debug("node %s should be added to master network" % (hostname))
+        else:
+            debug("skipping node %s since already in master network" \
+                  % (hostname))
+
+    return mn_new_lines
+
+def write_mn_new_lines(mn_new_lines):
+    """Either write new master_network lines in file (if conf.write is True) or
+       print to stdout.
+    """
+    if conf.write:
+        with(open(conf.master_network,'a')) as mn_file:
+            for line in mn_new_lines:
+                mn_file.write(line)
+    else:
+        # print new lines on stdout
+        for line in mn_new_lines:
+            print(line),
+
+def main():
+    """Main function"""
+
+    global conf
+    parse_args()
+    conf.parse()
+    conf.dump()
+    discovered_nodes = parse_discovery_files()
+    mn_lines = build_mn_lines(discovered_nodes, conf.hosts)
+    mn_hosts = parse_current_mn_hosts()
+    mn_new_lines = compute_mn_new_lines(mn_hosts, mn_lines)
+    write_mn_new_lines(mn_new_lines)
+    debug('update master network is done.')
+
+if __name__ == "__main__":
+    main()

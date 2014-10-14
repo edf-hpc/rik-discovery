@@ -1,4 +1,10 @@
-rik-discovery (0.1.0) stable; urgency=low
+rik-discovery (0.1.1) calibre8; urgency=low
+
+  * Add rik-update-mn Python script
+
+ -- Rémi Palancher <remi-externe.palancher@edf.fr>  Mon, 13 Oct 2014 19:38:21 +0200
+
+rik-discovery (0.1.0) calibre8; urgency=low
 
   * Initial release. 
 

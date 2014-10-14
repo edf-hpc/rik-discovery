@@ -11,10 +11,16 @@ Vcs-Git: git://github.com/edf-hpc/rik-discovery.git
 Package: rik-discovery-initramfs-tools
 Architecture: all
 Depends:
- ${misc:Depends}, ipmitool, initramfs-tools 
+ ${misc:Depends},
+ ipmitool,
+ initramfs-tools,
+ python,
+ clustershell,
+ python-netaddr
 Description: Discovery System Boot Scripts (initramfs-tools backend)
  rik-discovery contains the components to send systems hardware information
  during the boot process.
  Information is sent accros tne network using the busybox applet tftp.
  .
- This package contains the initramfs-tools backend.
+ This package contains the initramfs-tools backend and a script to update
+ master_network.csv file based on discovery files.

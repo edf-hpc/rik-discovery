@@ -1,2 +1,3 @@
 scripts/discovery usr/share/initramfs-tools/scripts  
+scripts/rik-update-mn usr/bin
 hooks/discovery usr/share/initramfs-tools/hooks  
