@@ -54,6 +54,7 @@ import sys
 from sets import Set
 import argparse
 import ConfigParser
+from collections import OrderedDict
 from netaddr import IPRange
 from ClusterShell.NodeSet import NodeSet
 
@@ -256,6 +257,9 @@ def compute_mn_new_lines(mn_hosts, mn_lines):
        mn_lines.
     """
     mn_new_lines = []
+
+    # sort by hostname
+    mn_lines = OrderedDict(sorted(mn_lines.items(), key=lambda t: t[0]))
 
     for hostname, mn_line in mn_lines.iteritems():
         if hostname not in mn_hosts:
