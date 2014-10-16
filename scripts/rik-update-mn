@@ -198,8 +198,8 @@ def parse_discovery_files():
             (mac_imm, mac_eth) = macs.split(',')
             mac_eth = mac_eth.rstrip() # remove \n at EOL
             if discovered_nodes.has_key(ip_imm):
-                raise KeyError("IMM MAC %s already present in dict " \
-                               "discovered_nodes" % (ip_imm)) 
+                raise KeyError("IMM MAC %s has already been discovered " \
+                               "in another inventory file" % (ip_imm))
             discovered_nodes[ip_imm] = {}
             discovered_nodes[ip_imm]['node_sn'] = \
                 os.path.basename(discovery_filename)
@@ -284,14 +284,17 @@ def main():
     """Main function"""
 
     global conf
-    parse_args()
-    conf.parse()
-    conf.dump()
-    discovered_nodes = parse_discovery_files()
-    mn_lines = build_mn_lines(discovered_nodes, conf.hosts)
-    mn_hosts = parse_current_mn_hosts()
-    mn_new_lines = compute_mn_new_lines(mn_hosts, mn_lines)
-    write_mn_new_lines(mn_new_lines)
+    try:
+        parse_args()
+        conf.parse()
+        conf.dump()
+        discovered_nodes = parse_discovery_files()
+        mn_lines = build_mn_lines(discovered_nodes, conf.hosts)
+        mn_hosts = parse_current_mn_hosts()
+        mn_new_lines = compute_mn_new_lines(mn_hosts, mn_lines)
+        write_mn_new_lines(mn_new_lines)
+    except Exception,e:
+        die(str(e))
     debug('update master network is done.')
 
 if __name__ == "__main__":

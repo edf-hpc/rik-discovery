@@ -1,6 +1,7 @@
 rik-discovery (0.1.1) calibre8; urgency=low
 
   * Add rik-update-mn Python script
+  * Update rik-update-mn error msg and handling of exception
 
  -- Rémi Palancher <remi-externe.palancher@edf.fr>  Mon, 13 Oct 2014 19:38:21 +0200
 
