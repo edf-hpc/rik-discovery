@@ -41,10 +41,10 @@
     Example of configuration file rik.conf:
 
         [cluster]
-        nodes=cn[001-128]
-        imm=10.10.1.1-10.10.1.128
-        eth=10.10.2.1-10.10.2.128
-        ib=10.10.3.1-10.10.3.128    
+        nodes=cn[001-128],cg[01-32]
+        imm=10.10.1.1-10.10.1.128,10.10.1.201-10.10.1.232
+        eth=10.10.2.1-10.10.2.128,10.10.2.201-10.10.3.232
+        ib=10.10.3.1-10.10.3.128,10.10.3.201-10.10.3.232
 """
 
 import csv
@@ -90,6 +90,15 @@ class Conf(object):
         debug("  discovery_dir: %s" % (self.discovery_dir))
         debug("  master_network: %s" % (self.master_network))
 
+    @staticmethod
+    def parse_ip_range(ip_range):
+        """Parse ip range if the form <ip1>-<ipn> returning an array of IP str
+           with only the host IP addresses."""
+        ip_range_a = ip_range.split('-')
+        return [ str(ip) for ip in IPRange(ip_range_a[0],
+                                           ip_range_a[1]) \
+                                 if is_host_ip(ip) ]
+
     def parse(self):
         """Parse the configuration file"""
         if not os.path.isfile(self.conf_file):
@@ -99,22 +108,25 @@ class Conf(object):
         parser.read(self.conf_file)
 
         # nodes
-        nodeset_s = parser.get('cluster', 'nodes')
-        nodeset = NodeSet(nodeset_s)
+        nodeset = []
+        nodeset_a = parser.get('cluster', 'nodes').split(',')
+        for nodeset_s in nodeset_a:
+            nodeset.extend([node for node in NodeSet(nodeset_s)])
 
         # ip ranges
-        ip_range_imm_a = parser.get('cluster', 'imm').split('-')
-        ip_range_eth_a = parser.get('cluster', 'eth').split('-')
-        ip_range_ib_a = parser.get('cluster', 'ib').split('-')
-        ip_range_imm = [ str(ip) for ip in IPRange(ip_range_imm_a[0],
-                                                   ip_range_imm_a[1]) \
-                                 if is_host_ip(ip) ]
-        ip_range_eth = [ str(ip) for ip in IPRange(ip_range_eth_a[0],
-                                                   ip_range_eth_a[1]) \
-                                 if is_host_ip(ip) ]
-        ip_range_ib  = [ str(ip) for ip in IPRange(ip_range_ib_a[0],
-                                                   ip_range_ib_a[1]) \
-                                 if is_host_ip(ip) ]
+        ip_ranges_imm_a = parser.get('cluster', 'imm').split(',')
+        ip_ranges_eth_a = parser.get('cluster', 'eth').split(',')
+        ip_ranges_ib_a = parser.get('cluster', 'ib').split(',')
+
+        ip_range_imm = []
+        for ip_range in ip_ranges_imm_a:
+            ip_range_imm.extend(Conf.parse_ip_range(ip_range))
+        ip_range_eth = []
+        for ip_range in ip_ranges_eth_a:
+            ip_range_eth.extend(Conf.parse_ip_range(ip_range))
+        ip_range_ib = []
+        for ip_range in ip_ranges_ib_a:
+            ip_range_ib.extend(Conf.parse_ip_range(ip_range))
 
         # check size of nodeset and ranges
         if len(nodeset) != len(ip_range_eth):
