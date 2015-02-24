@@ -28,8 +28,8 @@ Readcmdline ()
         TFTPSERVER="${_PARAMETER#tftpserver=}"
         export TFTPSERVER
       ;;
-      interface=*)
-        IFACE="${_PARAMETER#interface=}" 
+      ethdevice=*)
+        IFACE="${_PARAMETER#ethdevice=}" 
         export IFACE
       ;;
     esac
